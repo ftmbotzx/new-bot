@@ -203,7 +203,7 @@ async def run_tracksssf(client, message):
                     f"⏳ Remaining: {total - sent_count - len(skipped_tracks) - len(failed_tracks)}",
                     reply_markup=cancel_keyboard
                 )
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
 
             except Exception as e:
                 logging.error(f"Send failed for {song_title}: {e}")
