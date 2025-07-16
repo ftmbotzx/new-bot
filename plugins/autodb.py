@@ -22,8 +22,8 @@ logging.getLogger("pyrogram").setLevel(logging.ERROR)
 
 logger = logging
 
-client_id = "feef7905dd374fd58ba72e08c0d77e70"
-client_secret = "60b4007a8b184727829670e2e0f911ca"
+client_id = "a904f0b9f7214e32a17a851767ea69d5"
+client_secret = "7df15a4c1b6b40c89b5072e7cea009a8"
 auth_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
 sp = spotipy.Spotify(auth_manager=auth_manager)
 
