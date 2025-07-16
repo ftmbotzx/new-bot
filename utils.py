@@ -90,7 +90,7 @@ async def get_song_download_url_by_spotify_url(spotify_url: str):
                     logger.error(f"Exception while requesting {api} (attempt {attempt+1}): {e}")
 
                 # Optional small delay before retrying
-                await asyncio.sleep(3)
+                await asyncio.sleep(5)
 
             logger.warning(f"Failed 3 attempts on {api}, moving to next API")
 
