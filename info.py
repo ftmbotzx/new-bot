@@ -24,5 +24,5 @@ MAINTENANCE_MESSAGE = (
     "Our bot is currently undergoing scheduled maintenance to improve performance and add new features.\n\n"
     "Please check back in a while. We’ll be back soon, better than ever!\n\n"
     "💬 **Support Group:** [SUPPORT](https://t.me/AnSBotsSupports)\n\n"
-    "**– Team Support**"
+    "**– Team Supportzx**"
 )
