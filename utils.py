@@ -35,7 +35,7 @@ import logging
 # Max 1 download at a time
 aio_semaphore = asyncio.Semaphore(1)
 
-async def download_with_aiohttp(url, output_dir, filename):
+async def download_with_aria2c(url, output_dir, filename):
     async with aio_semaphore:
         await asyncio.sleep(2)  # delay before start
 
