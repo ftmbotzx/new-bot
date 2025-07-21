@@ -25,41 +25,36 @@ import asyncio
 
 aria2c_semaphore = asyncio.Semaphore(1)  # max 1 parallel
 
-async def download_with_aria2c(url, output_dir, filename):
-    async with aria2c_semaphore:
-        # optional small delay before starting
-        await asyncio.sleep(2)
+import aiohttp
+import aiofiles
+import os
+import asyncio
+import logging
 
-        cmd = [
-            "aria2c",
-            "-x", "2",
-            "-s", "2",
-            "-k", "1M",
-            "--max-tries=5",
-            "--retry-wait=5",
-            "--timeout=60",
-            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-            "-d", output_dir,
-            "-o", filename,
-            url
-        ]
-       
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
 
-   
-        if process.returncode == 0:
-         
-            return True
-        else:
-            logger.error(f"aria2c failed with exit code {process.returncode}")
-            # optionally implement exponential backoff retry here
+# Max 1 download at a time
+aio_semaphore = asyncio.Semaphore(1)
+
+async def download_with_aiohttp(url, output_dir, filename):
+    async with aio_semaphore:
+        await asyncio.sleep(2)  # delay before start
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=60) as resp:
+                    if resp.status == 200:
+                        os.makedirs(output_dir, exist_ok=True)
+                        file_path = os.path.join(output_dir, filename)
+                        async with aiofiles.open(file_path, 'wb') as f:
+                            async for chunk in resp.content.iter_chunked(1024 * 1024):  # 1MB
+                                await f.write(chunk)
+                        return True
+                    else:
+                        logger.error(f"Download failed for {url}, HTTP status: {resp.status}")
+                        return False
+        except Exception as e:
+            logger.error(f"Exception during download of {url}: {e}")
             return False
-
 
 
 def ms_to_minutes(ms):
