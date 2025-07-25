@@ -4,7 +4,7 @@ import aiohttp
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import logging
-from plugins.autosend import run_batch_from_track_ids, run_cancel_flags
+from plugins.autodb import run_batch_from_track_ids, run_cancel_flags
 from database.db import db
 from info import BOT_TOKEN, OWNER_ID
 
