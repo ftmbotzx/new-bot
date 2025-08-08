@@ -312,8 +312,8 @@ class SpotifyDownloaderSecondary:
             results.append({
                 "title": cleaned_title,
                 "artist": cleaned_artist,
-                "image": image["src"] if image and image.has_attr("src") else "",
                 "duration": 25000,
+                "image": image["src"] if image and image.has_attr("src") else "",
                 "download": link["href"] if link and link.has_attr("href") else ""
             })
 
