@@ -168,73 +168,30 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def get_song_download_url_by_spotify_url(url, max_retries=3, retry_delay=3):
+async def get_song_download_url_by_spotify_url(url, max_retries=2, retry_delay=3):
+    """
+    Download song details from Spotify URL using primary method only.
+    Will retry once if the first attempt fails.
+    """
     for attempt in range(1, max_retries + 1):
-        methods = ['primary', 'secondary']
-        random.shuffle(methods)
-
-        first = methods[0]
-        second = methods[1]
-
         try:
-            if first == 'primary':
-                # Direct await, no run_in_executor
-                result = await asyncio.wait_for(spotify_download_primary(url), timeout=20)
-                if result and result.get('download'):
-                    return (
-                        result['title'],
-                        result['artist'],
-                        result['duration'],
-                        result['image'],
-                        result['download']
-                    )
-            else:
-                results = await asyncio.wait_for(spotify_download_secondary(url), timeout=20)
-
-                if isinstance(results, list):
-                    for item in results:
-                        if item.get('download'):
-                            result = item
-                            return (
-                                result['title'],
-                                result['artist'],
-                                result['duration'],
-                                result['image'],
-                                result['download']
-                            )
+            result = await asyncio.wait_for(spotify_download_primary(url), timeout=20)
+            if result and result.get('download'):
+                return (
+                    result['title'],
+                    result['artist'],
+                    result['duration'],
+                    result['image'],
+                    result['download']
+                )
         except Exception as e:
-            logger.info(f"Attempt {attempt}: {first} method failed with error: {e}")
+            logger.info(f"Attempt {attempt}: Primary method failed with error: {e}")
 
-        try:
-            if second == 'primary':
-                result = await asyncio.wait_for(spotify_download_primary(url), timeout=20)
-                if result and result.get('download'):
-                    return (
-                        result['title'],
-                        result['artist'],
-                        result['duration'],
-                        result['image'],
-                        result['download']
-                    )
-            else:
-                results = await asyncio.wait_for(spotify_download_secondary(url), timeout=20)
-                if isinstance(results, list):
-                    for item in results:
-                        if item.get('download'):
-                            result = item
-                            return (
-                                result['title'],
-                                result['artist'],
-                                result['duration'],
-                                result['image'],
-                                result['download']
-                            )
-        except Exception as e:
-            logger.info(f"Attempt {attempt}: {second} method failed with error: {e}")
+        if attempt < max_retries:
+            logger.info(f"Retrying after {retry_delay} seconds...")
+            await asyncio.sleep(retry_delay)
 
-        logger.info(f"Attempt {attempt} failed, retrying after {retry_delay} seconds...")
-        await asyncio.sleep(retry_delay)
-
+    # If both attempts fail
     return None, None, None, None, None
 
 
@@ -298,10 +255,8 @@ class SpotifyDownloaderSecondary:
             raw_title = title_tag.get_text(strip=True) if title_tag else "No Title"
             artist = artist_tag.get_text(strip=True) if artist_tag else "Unknown"
 
-            # Title se parentheses aur unke beech ka content hatao
             cleaned_title = re.sub(r"\s*\(.*?\)", "", raw_title).strip()
 
-            # Artist se parentheses hatao
             cleaned_artist = re.sub(r"[\(\)]", "", artist).strip()
 
             results.append({
@@ -314,7 +269,6 @@ class SpotifyDownloaderSecondary:
 
         return results
 
-# Wrapper function for usage
 async def spotify_download_secondary(url):
     downloader = SpotifyDownloaderSecondary()
     return await downloader.download(url)
