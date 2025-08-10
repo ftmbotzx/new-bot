@@ -15,9 +15,10 @@ import random
 import asyncio
 from info import DUMP_CHANNEL_ID, FAILD_CHAT_ID
 from database.db import db
-from datetime import datetime
+from datetime import datetime 
 import pytz
-
+from plugins.jiosavan import search_for_song
+import re
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
@@ -48,27 +49,16 @@ async def show_run_flags(client, message):
     await message.reply_text(text)
     
 
-def extract_track_info(spotify_url: str):
-    parsed = urlparse(spotify_url)
-
-    if "track" not in parsed.path:
-        logging.warning("URL does not contain 'track' in path. Returning None.")
-        return None
-
-    track_id = parsed.path.split("/")[-1].split("?")[0]
+async def extract_track_info(track_id):
     try:
-        result = sp.track(track_id)
+        result = await asyncio.to_thread(sp.track, track_id)
     except Exception as e:
         logging.error(f"Error fetching track info from Spotify API: {e}")
         return None
 
     title = result['name']
-    artist = result['artists'][0]['name']
 
-    album_images = result['album'].get('images', [])
-    image_url = album_images[0]['url'] if album_images else None
-
-    return title, artist, image_url
+    return title
   
 def format_seconds(seconds: int) -> str:
     days = seconds // 86400
@@ -88,9 +78,23 @@ def format_seconds(seconds: int) -> str:
 
     return ' '.join(parts)
 
+
+
+
+
+import os
+import random
+import time
+import logging
+import pytz
+from datetime import datetime
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import asyncio
+
 async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_id):
     total = len(track_ids)
     sent_count = 0
+    extra_sent_count = 0
     failed_tracks = []
     skipped_tracks = []
 
@@ -104,27 +108,28 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
     start_time = time.time()
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist)
-
     now_ist_str = now_ist.strftime("%Y-%m-%d %H:%M:%S %z")
-    logger.info(f"{now_ist_str}")
+    logging.info(f"{now_ist_str}")
 
     status_msg = await client.send_message(
         user_id,
         f"📂 **Batch Download Started!**\n"
-        f"🎵 Total: **{total}**\n"
-        f"✅ Sent: **0**\n"
+        f"🎵 Total Tracks: **{total}**\n"
+        f"✅ Sent (1 per track): **0**\n"
+        f"➕ Extra Sends: **0**\n"
         f"⏳ Remaining: **{total}**",
         reply_markup=cancel_keyboard
     )
-    
+
     await db.tasks_collection.update_one(
         {"_id": task_id},
         {"$set": {
             "status": "running",
             "sent_count": 0,
+            "extra_sent_count": 0,
             "skipped_count": 0,
             "failed_count": 0,
-            "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M:%S %z")
+            "updated_at": datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %z")
         }}
     )
 
@@ -133,23 +138,24 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
             end_time = time.time()
             formatted_time = format_seconds(int(end_time - start_time))
 
-            # Update DB as cancelled
             await db.tasks_collection.update_one(
                 {"_id": task_id},
                 {"$set": {
                     "status": "cancelled",
                     "sent_count": sent_count,
+                    "extra_sent_count": extra_sent_count,
                     "skipped_count": len(skipped_tracks),
                     "failed_count": len(failed_tracks),
                     "time_taken": formatted_time,
-                    "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M:%S %z")
+                    "updated_at": datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %z")
                 }}
             )
 
             await status_msg.edit(
                 f"❌ Batch cancelled by user.\n"
-                f"🎵 Total: **{total}**\n"
-                f"✅ Sent: **{sent_count}**\n"
+                f"🎵 Total Tracks: **{total}**\n"
+                f"✅ Sent (1 per track): **{sent_count}**\n"
+                f"➕ Extra Sends: **{extra_sent_count}**\n"
                 f"⏭️ Skipped: **{len(skipped_tracks)}**\n"
                 f"❌ Failed: **{len(failed_tracks)}**\n"
                 f"⏳ Time Taken: **{formatted_time}**",
@@ -157,85 +163,118 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
             )
             break
 
-        dump_file_id = await db.get_dump_file_id(track_id)
-        if dump_file_id:
-            skipped_tracks.append(track_id)
-            continue
-
         try:
-            spotify_url = f"https://open.spotify.com/track/{track_id}"
-
             await status_msg.edit(
-                f"⬇️ Downloading {idx} of {total}\n"
-                f"✅ Sent: {sent_count}\n"
+                f"⬇️ Processing track {idx} of {total}\n"
+                f"✅ Sent (1 per track): {sent_count}\n"
+                f"➕ Extra Sends: {extra_sent_count}\n"
                 f"⏭️ Skipped: {len(skipped_tracks)}\n"
                 f"❌ Failed: {len(failed_tracks)}\n"
                 f"⏳ Remaining: {total - sent_count - len(skipped_tracks) - len(failed_tracks)}",
                 reply_markup=cancel_keyboard
             )
 
-            title, artist, duration, thumb_url, song_url = await get_song_download_url_by_spotify_url(spotify_url)
-            song_title = title
-            if not song_url:
+
+            title_spotify = await extract_track_info(track_id)
+            song_variants = search_for_song(title_spotify, lyrics=False, songdata=True)
+        
+            if not song_variants:
                 failed_tracks.append(track_id)
                 continue
 
-            base_name = safe_filename(song_title)
-            safe_name = f"{base_name}_{random.randint(100, 999)}.mp3"
-            download_path = os.path.join(output_dir, safe_name)
+            first_variant_done = False
+            for variant in song_variants:
+                music_id = variant.get("id")
+                variant_in_db = await db.get_dump_file_id_by_jio(music_id)
+                if variant_in_db:
+                    extra_sent_count += 1
+                    continue
 
-            success = await download_with_aria2c(song_url, output_dir, safe_name)
-            if not success or not os.path.exists(download_path):
-                failed_tracks.append(track_id)
-                continue
+                song_url = variant.get("media_url")
+                song_title = variant.get("song")
+                artist = variant.get("primary_artists")
+                duration = variant.get("duration")
+                thumb_url = variant.get("image")
 
-            thumb_path = os.path.join(output_dir, safe_filename(song_title) + ".jpg")
-            thumb_success = await download_thumbnail(thumb_url, thumb_path)
+                base_name = safe_filename(song_title)
+                safe_name = f"{base_name}_{random.randint(100, 999)}.mp3"
+                download_path = os.path.join(output_dir, safe_name)
 
-            dump_caption = f"🎵 **{song_title}**\n👤 {artist}\n🆔 {track_id}"
-            dump_msg = await client.send_audio(
-                DUMP_CHANNEL_ID,
-                download_path,
-                caption=dump_caption,
-                thumb=thumb_path if thumb_success and os.path.exists(thumb_path) else None,
-                title=song_title,
-                performer=artist
-            )
+                success = await download_with_aria2c(song_url, output_dir, safe_name)
+                if not success or not os.path.exists(download_path):
+                    logging.error(f"Download failed for {song_url}")
+                    continue
 
-            await db.save_dump_file_id(track_id, dump_msg.audio.file_id)
-            sent_count += 1
+                thumb_path = os.path.join(output_dir, safe_filename(song_title) + ".jpg")
+                thumb_success = await download_thumbnail(thumb_url, thumb_path) if thumb_url else False
 
-            if sent_count % 2 == 0 or idx == total:
-                await db.tasks_collection.update_one(
-                    {"_id": task_id},
-                    {"$set": {
-                        "sent_count": sent_count,
-                        "skipped_count": len(skipped_tracks),
-                        "failed_count": len(failed_tracks),
-                        "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M:%S %z")
-                    }}
+                dump_caption = (
+                    f"🆔 Music ID: {music_id or 'N/A'}\n"
+                    f"💽 Album: {variant.get('album', 'Unknown')}\n"
+                    f"📅 Year: {variant.get('year', 'N/A')}\n"
+                    f"⏱ Duration: {duration}\n"
+                )
+                dump_msg = await client.send_audio(
+                    DUMP_CHANNEL_ID,
+                    download_path,
+                    caption=dump_caption,
+                    duration=int(duration or 0),
+                    thumb=thumb_path if thumb_success and os.path.exists(thumb_path) else None,
+                    title=song_title,
+                    performer=artist
                 )
 
-            await status_msg.edit(
-                f"⬇️ Downloading {idx} of {total}: **{song_title}**\n"
-                f"✅ Sent: {sent_count}\n"
-                f"⏭️ Skipped: {len(skipped_tracks)}\n"
-                f"❌ Failed: {len(failed_tracks)}\n"
-                f"⏳ Remaining: {total - sent_count - len(skipped_tracks) - len(failed_tracks)}",
-                reply_markup=cancel_keyboard
-            )
-            await asyncio.sleep(1)
+                if not first_variant_done:
+                    sent_count += 1
+                    first_variant_done = True
+                else:
+                    extra_sent_count += 1
 
-            if os.path.exists(download_path):
-                os.remove(download_path)
-            if os.path.exists(thumb_path):
-                os.remove(thumb_path)
+                if os.path.exists(download_path):
+                    os.remove(download_path)
+                if thumb_success and os.path.exists(thumb_path):
+                    os.remove(thumb_path)
+
+                await db.save_dump_file_id_by_jio(music_id, {
+                    "file_id": dump_msg.audio.file_id,
+                    "song_title": song_title,
+                    "artist": artist,
+                    "album": variant.get("album"),
+                    "year": variant.get("year"),
+                    "duration": duration,
+                    "thumbnail": thumb_url,
+                    "saved_at": datetime.utcnow()
+                })
+
+                # Update DB every 2 sends or at end
+                if (sent_count + extra_sent_count) % 2 == 0 or idx == total:
+                    await db.tasks_collection.update_one(
+                        {"_id": task_id},
+                        {"$set": {
+                            "sent_count": sent_count,
+                            "extra_sent_count": extra_sent_count,
+                            "skipped_count": len(skipped_tracks),
+                            "failed_count": len(failed_tracks),
+                            "updated_at": datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %z")
+                        }}
+                    )
+
+                await status_msg.edit(
+                    f"⬇️ Processing track {idx} of {total}: **{song_title}**\n"
+                    f"✅ Sent (1 per track): {sent_count}\n"
+                    f"➕ Extra Sends: {extra_sent_count}\n"
+                    f"⏭️ Skipped: {len(skipped_tracks)}\n"
+                    f"❌ Failed: {len(failed_tracks)}\n"
+                    f"⏳ Remaining: {total - sent_count - len(skipped_tracks) - len(failed_tracks)}",
+                    reply_markup=cancel_keyboard
+                )
+                await asyncio.sleep(1)
 
         except Exception as e:
             logging.error(f"Error with {track_id}: {e}")
             failed_tracks.append(track_id)
 
-    # Retry logic agar aapka pehle se hai to wahi use karo
+    # Retry logic with same Jio Savan style
     if failed_tracks:
         await asyncio.sleep(10)
         await client.send_message(user_id, f"🔁 Retrying {len(failed_tracks)} failed tracks...")
@@ -248,50 +287,88 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 await client.send_message(user_id, "❌ Retry cancelled by user.")
                 break
 
-            dump_file_id = await db.get_dump_file_id(track_id)
-            if dump_file_id:
-                retry_success.append(track_id)
-                continue
-
             try:
-                spotify_url = f"https://open.spotify.com/track/{track_id}"
+                # Check DB before retrying
+                dump_file_id = await db.get_dump_file_id_by_jio(track_id)
+                if dump_file_id:
+                    retry_success.append(track_id)
+                    continue
 
-                title, artist, duration, thumb_url, song_url = await get_song_download_url_by_spotify_url(spotify_url)
-                song_title = title
-                if not song_url:
+                title_spotify = await extract_track_info(track_id)
+                song_variants = search_for_song(title_spotify, lyrics=False, songdata=True)
+                logging.info(f"Retry search result for '{title_spotify}': {song_variants}")
+
+                if not song_variants:
                     retry_failed.append(track_id)
                     continue
 
-                base_name = safe_filename(song_title)
-                safe_name = f"{base_name}_{random.randint(100, 999)}.mp3"
-                download_path = os.path.join(output_dir, safe_name)
+                first_variant_done = False
+                for variant in song_variants:
+                    music_id = variant.get("id")
+                    variant_in_db = await db.get_dump_file_id_by_jio(music_id)
+                    if variant_in_db:
+                        retry_success.append(track_id)
+                        first_variant_done = True
+                        break
 
-                success = await download_with_aria2c(song_url, output_dir, safe_name)
-                if not success or not os.path.exists(download_path):
+                    song_url = variant.get("media_url")
+                    song_title = variant.get("song")
+                    artist = variant.get("primary_artists")
+                    duration = variant.get("duration")
+                    thumb_url = variant.get("image")
+
+                    base_name = safe_filename(song_title)
+                    safe_name = f"{base_name}_{random.randint(100, 999)}.mp3"
+                    download_path = os.path.join(output_dir, safe_name)
+
+                    success = await download_with_aria2c(song_url, output_dir, safe_name)
+                    if not success or not os.path.exists(download_path):
+                        logging.error(f"Retry download failed for {song_url}")
+                        continue
+
+                    thumb_path = os.path.join(output_dir, safe_filename(song_title) + ".jpg")
+                    thumb_success = await download_thumbnail(thumb_url, thumb_path) if thumb_url else False
+
+                    dump_caption = (
+                        f"🆔 Music ID: {music_id or 'N/A'}\n"
+                        f"💽 Album: {variant.get('album', 'Unknown')}\n"
+                        f"📅 Year: {variant.get('year', 'N/A')}\n"
+                        f"⏱ Duration: {duration}\n"
+                    )
+                    dump_msg = await client.send_audio(
+                        DUMP_CHANNEL_ID,
+                        download_path,
+                        caption=dump_caption,
+                        duration=int(duration or 0),
+                        thumb=thumb_path if thumb_success and os.path.exists(thumb_path) else None,
+                        title=song_title,
+                        performer=artist
+                    )
+
+                    retry_success.append(track_id)
+                    sent_count += 1
+
+                    if os.path.exists(download_path):
+                        os.remove(download_path)
+                    if thumb_success and os.path.exists(thumb_path):
+                        os.remove(thumb_path)
+
+                    await db.save_dump_file_id_by_jio(music_id, {
+                        "file_id": dump_msg.audio.file_id,
+                        "song_title": song_title,
+                        "artist": artist,
+                        "album": variant.get("album"),
+                        "year": variant.get("year"),
+                        "duration": duration,
+                        "thumbnail": thumb_url,
+                        "saved_at": datetime.utcnow()
+                    })
+
+                    first_variant_done = True
+                    break
+
+                if not first_variant_done:
                     retry_failed.append(track_id)
-                    continue
-
-                thumb_path = os.path.join(output_dir, safe_filename(song_title) + ".jpg")
-                thumb_success = await download_thumbnail(thumb_url, thumb_path)
-
-                dump_caption = f"🎵 **{song_title}**\n👤 {artist}\n🆔 {track_id}"
-                dump_msg = await client.send_audio(
-                    DUMP_CHANNEL_ID,
-                    download_path,
-                    caption=dump_caption,
-                    thumb=thumb_path if thumb_success and os.path.exists(thumb_path) else None,
-                    title=song_title,
-                    performer=artist
-                )
-
-                await db.save_dump_file_id(track_id, dump_msg.audio.file_id)
-                retry_success.append(track_id)
-                sent_count += 1
-
-                if os.path.exists(download_path):
-                    os.remove(download_path)
-                if os.path.exists(thumb_path):
-                    os.remove(thumb_path)
 
             except Exception as e:
                 logging.error(f"Retry error for {track_id}: {e}")
@@ -303,7 +380,6 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
         )
         failed_tracks = retry_failed
 
-
     if not run_cancel_flags.get(key):
         end_time = time.time()
         formatted_time = format_seconds(int(end_time - start_time))
@@ -312,17 +388,19 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
             {"$set": {
                 "status": "done",
                 "sent_count": sent_count,
+                "extra_sent_count": extra_sent_count,
                 "skipped_count": len(skipped_tracks),
                 "failed_count": len(failed_tracks),
                 "time_taken": formatted_time,
-                "updated_at": datetime.now(pytz.timezone('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M:%S %z")
+                "updated_at": datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %z")
             }}
         )
 
         await status_msg.edit(
             f"✅ **Batch Done!**\n"
             f"🎵 Total: **{total}**\n"
-            f"✅ Sent: **{sent_count}**\n"
+            f"✅ Sent (1 per track): **{sent_count}**\n"
+            f"➕ Extra Sends: **{extra_sent_count}**\n"
             f"⏭️ Skipped: **{len(skipped_tracks)}**\n"
             f"❌ Failed: **{len(failed_tracks)}**\n"
             f"⏳ Time Taken: **{formatted_time}**",
@@ -349,7 +427,6 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
         os.remove(failed_file_path)
 
     run_cancel_flags.pop(key, None)
-
 
 
 @Client.on_callback_query(filters.regex(r"cancel_run:(\d+)"))
