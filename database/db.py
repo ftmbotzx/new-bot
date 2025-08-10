@@ -10,13 +10,35 @@ class Database:
         self.media_col = self.db[COLLECTION_NAME]
         self.tasks_collection = self.db["tasks"]
         self.tasks = self.db["tasks"]
+        self.jio_collection = self.db['jio_music_files']
         self.bots = self.db["bots"]
+        self.tracks = self.db["tracks"]
         self.track_files = self.db["track_files"]
         
+        
+
     def new_user(self, id, name):
         return {"id": int(id), "name": name}
 
     # ----------- Dump cache methods -------------
+    async def save_dump_file_id_by_jio(self, music_id: str, data: dict):
+        """
+        Save or update music file data by music_id
+        data can include file_id, song_title, artist, album, duration, etc.
+        """
+        data['updated_at'] = datetime.utcnow()
+        await self.jio_collection.update_one(
+            {"music_id": music_id},
+            {"$set": data},
+           upsert=True
+        )
+
+    async def get_dump_file_id_by_jio(self, music_id: str):
+        """
+        Get music file data by music_id
+        """
+        result = await self.jio_collection.find_one({"music_id": music_id})
+        return result
 
     async def save_dump_file_id(self, track_id: str, file_id: str):
         # Upsert kare: agar document hai to update, nahi to insert
