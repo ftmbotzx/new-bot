@@ -16,3 +16,4 @@ motor
 beautifulsoup4
 aiohttp
 aiofiles
+pyDes
