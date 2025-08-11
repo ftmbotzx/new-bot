@@ -19,6 +19,8 @@ from datetime import datetime
 import pytz
 from plugins.jiosavan import search_for_song
 import re
+import aiohttp
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
