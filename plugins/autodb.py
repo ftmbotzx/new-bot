@@ -94,8 +94,11 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
     total = len(track_ids)
     sent_count = 0
     extra_sent_count = 0
+    extra_skip_count = 0  # 🔹 New counter for extra skips
     failed_tracks = []
     skipped_tracks = []
+
+    started_set = False  # Track if started_at is set
 
     key = f"run_{user_id}"
     run_cancel_flags[key] = False
@@ -116,6 +119,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
         f"🎵 Total Tracks: **{total}**\n"
         f"✅ Sent (1 per track): **0**\n"
         f"➕ Extra Sends: **0**\n"
+        f"⏭️ Extra Skips: **0**\n"
         f"⏳ Remaining: **{total}**",
         reply_markup=cancel_keyboard
     )
@@ -126,9 +130,10 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
             "status": "running",
             "sent_count": 0,
             "extra_sent_count": 0,
+            "extra_skip_count": 0,
             "skipped_count": 0,
             "failed_count": 0,
-            "updated_at": datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %z")
+            "updated_at": now_ist_str
         }}
     )
 
@@ -143,6 +148,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                     "status": "cancelled",
                     "sent_count": sent_count,
                     "extra_sent_count": extra_sent_count,
+                    "extra_skip_count": extra_skip_count,
                     "skipped_count": len(skipped_tracks),
                     "failed_count": len(failed_tracks),
                     "time_taken": formatted_time,
@@ -155,6 +161,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 f"🎵 Total Tracks: **{total}**\n"
                 f"✅ Sent (1 per track): **{sent_count}**\n"
                 f"➕ Extra Sends: **{extra_sent_count}**\n"
+                f"⏭️ Extra Skips: **{extra_skip_count}**\n"
                 f"⏭️ Skipped: **{len(skipped_tracks)}**\n"
                 f"❌ Failed: **{len(failed_tracks)}**\n"
                 f"⏳ Time Taken: **{formatted_time}**",
@@ -163,20 +170,9 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
             break
 
         try:
-            await status_msg.edit(
-                f"⬇️ Processing track {idx} of {total}\n"
-                f"✅ Sent (1 per track): {sent_count}\n"
-                f"➕ Extra Sends: {extra_sent_count}\n"
-                f"⏭️ Skipped: {len(skipped_tracks)}\n"
-                f"❌ Failed: {len(failed_tracks)}\n"
-                f"⏳ Remaining: {total - sent_count - len(skipped_tracks) - len(failed_tracks)}",
-                reply_markup=cancel_keyboard
-            )
-
-
             title_spotify = await extract_track_info(track_id)
             song_variants = search_for_song(title_spotify, lyrics=False, songdata=True)
-        
+
             if not song_variants:
                 failed_tracks.append(track_id)
                 continue
@@ -185,8 +181,9 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
             for variant in song_variants:
                 music_id = variant.get("id")
                 variant_in_db = await db.get_dump_file_id_by_jio(music_id)
+
                 if variant_in_db:
-                    extra_sent_count += 1
+                    extra_skip_count += 1
                     continue
 
                 song_url = variant.get("media_url")
@@ -226,6 +223,18 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 if not first_variant_done:
                     sent_count += 1
                     first_variant_done = True
+
+                    if not started_set:
+                        started_at_str = datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %z")
+                        await db.tasks_collection.update_one(
+                            {"_id": task_id},
+                            {"$set": {
+                                "started_at": started_at_str,
+                                "sent_count": sent_count,
+                                "updated_at": started_at_str
+                            }}
+                        )
+                        started_set = True
                 else:
                     extra_sent_count += 1
 
@@ -245,35 +254,35 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                     "saved_at": datetime.utcnow()
                 })
 
-                # Update DB every 2 sends or at end
                 if (sent_count + extra_sent_count) % 2 == 0 or idx == total:
                     await db.tasks_collection.update_one(
                         {"_id": task_id},
                         {"$set": {
                             "sent_count": sent_count,
                             "extra_sent_count": extra_sent_count,
+                            "extra_skip_count": extra_skip_count,
                             "skipped_count": len(skipped_tracks),
                             "failed_count": len(failed_tracks),
                             "updated_at": datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %z")
                         }}
                     )
-
-                await status_msg.edit(
-                    f"⬇️ Processing track {idx} of {total}: **{song_title}**\n"
-                    f"✅ Sent (1 per track): {sent_count}\n"
-                    f"➕ Extra Sends: {extra_sent_count}\n"
-                    f"⏭️ Skipped: {len(skipped_tracks)}\n"
-                    f"❌ Failed: {len(failed_tracks)}\n"
-                    f"⏳ Remaining: {total - sent_count - len(skipped_tracks) - len(failed_tracks)}",
-                    reply_markup=cancel_keyboard
-                )
+                    await status_msg.edit(
+                        f"⬇️ Processing track {idx} of {total}\n"
+                        f"✅ Sent (1 per track): {sent_count}\n"
+                        f"➕ Extra Sends: {extra_sent_count}\n"
+                        f"⏭️ Extra Skips: {extra_skip_count}\n"
+                        f"⏭️ Skipped: {len(skipped_tracks)}\n"
+                        f"❌ Failed: {len(failed_tracks)}\n"
+                        f"⏳ Remaining: {total - sent_count - len(skipped_tracks) - len(failed_tracks)}",
+                        reply_markup=cancel_keyboard
+                    )
                 await asyncio.sleep(1)
 
         except Exception as e:
             logging.error(f"Error with {track_id}: {e}")
             failed_tracks.append(track_id)
 
-    # Retry logic with same Jio Savan style
+    # --- Retry logic start ---
     if failed_tracks:
         await asyncio.sleep(10)
         await client.send_message(user_id, f"🔁 Retrying {len(failed_tracks)} failed tracks...")
@@ -287,7 +296,6 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 break
 
             try:
-                # Check DB before retrying
                 dump_file_id = await db.get_dump_file_id_by_jio(track_id)
                 if dump_file_id:
                     retry_success.append(track_id)
@@ -305,7 +313,9 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 for variant in song_variants:
                     music_id = variant.get("id")
                     variant_in_db = await db.get_dump_file_id_by_jio(music_id)
+
                     if variant_in_db:
+                        extra_skip_count += 1  # 🔹 Count skip in retry too
                         retry_success.append(track_id)
                         first_variant_done = True
                         break
@@ -369,6 +379,20 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 if not first_variant_done:
                     retry_failed.append(track_id)
 
+                # Update DB every 2 retries or end of retry batch
+                if (sent_count + extra_sent_count + extra_skip_count) % 2 == 0 or idx == len(failed_tracks):
+                    await db.tasks_collection.update_one(
+                        {"_id": task_id},
+                        {"$set": {
+                            "sent_count": sent_count,
+                            "extra_sent_count": extra_sent_count,
+                            "extra_skip_count": extra_skip_count,
+                            "skipped_count": len(skipped_tracks),
+                            "failed_count": len(retry_failed),
+                            "updated_at": datetime.now(ist).strftime("%Y-%m-%d %H:%M:%S %z")
+                        }}
+                    )
+
             except Exception as e:
                 logging.error(f"Retry error for {track_id}: {e}")
                 retry_failed.append(track_id)
@@ -379,6 +403,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
         )
         failed_tracks = retry_failed
 
+    # --- Final task completion update ---
     if not run_cancel_flags.get(key):
         end_time = time.time()
         formatted_time = format_seconds(int(end_time - start_time))
@@ -388,6 +413,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 "status": "done",
                 "sent_count": sent_count,
                 "extra_sent_count": extra_sent_count,
+                "extra_skip_count": extra_skip_count,
                 "skipped_count": len(skipped_tracks),
                 "failed_count": len(failed_tracks),
                 "time_taken": formatted_time,
@@ -400,6 +426,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
             f"🎵 Total: **{total}**\n"
             f"✅ Sent (1 per track): **{sent_count}**\n"
             f"➕ Extra Sends: **{extra_sent_count}**\n"
+            f"⏭️ Extra Skips: **{extra_skip_count}**\n"
             f"⏭️ Skipped: **{len(skipped_tracks)}**\n"
             f"❌ Failed: **{len(failed_tracks)}**\n"
             f"⏳ Time Taken: **{formatted_time}**",
@@ -426,6 +453,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
         os.remove(failed_file_path)
 
     run_cancel_flags.pop(key, None)
+
 
 
 @Client.on_callback_query(filters.regex(r"cancel_run:(\d+)"))
