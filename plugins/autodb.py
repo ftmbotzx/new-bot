@@ -50,15 +50,12 @@ async def show_run_flags(client, message):
     
 
 async def extract_track_info(track_id):
-    try:
-        result = await asyncio.to_thread(sp.track, track_id)
-    except Exception as e:
-        logging.error(f"Error fetching track info from Spotify API: {e}")
-        return None
-
-    title = result['name']
-
-    return title
+    url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            data = await resp.json()
+            return data.get("title")
+  
   
 def format_seconds(seconds: int) -> str:
     days = seconds // 86400
