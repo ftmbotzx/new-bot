@@ -13,7 +13,6 @@ PORT = int(os.getenv("PORT", "8080"))
 FORCE_CHANNEL = int(os.getenv("FORCE_CHANNEL", "-1002379643238"))
 MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://Ansh089:Ansh089@cluster0.y8tpouc.mongodb.net/?retryWrites=true&w=majority")
 
-MONGO_URI2 = os.getenv("MONGO_URI2", "mongodb+srv://ftmbotzx:ftmbotzx@cluster0.0b8imks.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 MONGO_NAME = os.getenv("MONGO_NAME", "SpotifyDL")
 ADMINS = [5660839376, 6167872503, 5961011848, 6538627123]
 DAILY_LIMITS = 20
