@@ -191,6 +191,8 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 artist = variant.get("primary_artists")
                 duration = variant.get("duration")
                 thumb_url = variant.get("image")
+                language = variant.get("language")
+                
 
                 base_name = safe_filename(song_title)
                 safe_name = f"{base_name}_{random.randint(100, 999)}.mp3"
@@ -208,6 +210,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                     f"🆔 Music ID: {music_id or 'N/A'}\n"
                     f"💽 Album: {variant.get('album', 'Unknown')}\n"
                     f"📅 Year: {variant.get('year', 'N/A')}\n"
+                    f"🌐 Language: {variant.get('language', 'N/A')}\n"
                     f"⏱ Duration: {duration}\n"
                 )
                 dump_msg = await client.send_audio(
@@ -325,6 +328,8 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                     artist = variant.get("primary_artists")
                     duration = variant.get("duration")
                     thumb_url = variant.get("image")
+                    language = variant.get("language")
+                
 
                     base_name = safe_filename(song_title)
                     safe_name = f"{base_name}_{random.randint(100, 999)}.mp3"
@@ -342,6 +347,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                         f"🆔 Music ID: {music_id or 'N/A'}\n"
                         f"💽 Album: {variant.get('album', 'Unknown')}\n"
                         f"📅 Year: {variant.get('year', 'N/A')}\n"
+                        f"🌐 Language: {variant.get('language', 'N/A')}\n"
                         f"⏱ Duration: {duration}\n"
                     )
                     dump_msg = await client.send_audio(
