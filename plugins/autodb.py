@@ -94,11 +94,11 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
     total = len(track_ids)
     sent_count = 0
     extra_sent_count = 0
-    extra_skip_count = 0  # 🔹 New counter for extra skips
+    extra_skip_count = 0
     failed_tracks = []
     skipped_tracks = []
 
-    started_set = False  # Track if started_at is set
+    started_set = False 
 
     key = f"run_{user_id}"
     run_cancel_flags[key] = False
@@ -246,16 +246,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                 if thumb_success and os.path.exists(thumb_path):
                     os.remove(thumb_path)
 
-                await db.save_dump_file_id_by_jio(music_id, {
-                    "file_id": dump_msg.audio.file_id,
-                    "song_title": song_title,
-                    "artist": artist,
-                    "album": variant.get("album"),
-                    "year": variant.get("year"),
-                    "duration": duration,
-                    "thumbnail": thumb_url,
-                    "saved_at": datetime.utcnow()
-                })
+                await db.save_dump_file_id_by_jio(music_id)
 
                 if (sent_count + extra_sent_count) % 2 == 0 or idx == total:
                     await db.tasks_collection.update_one(
@@ -318,7 +309,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                     variant_in_db = await db.get_dump_file_id_by_jio(music_id)
 
                     if variant_in_db:
-                        extra_skip_count += 1  # 🔹 Count skip in retry too
+                        extra_skip_count += 1
                         retry_success.append(track_id)
                         first_variant_done = True
                         break
@@ -368,24 +359,14 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
                     if thumb_success and os.path.exists(thumb_path):
                         os.remove(thumb_path)
 
-                    await db.save_dump_file_id_by_jio(music_id, {
-                        "file_id": dump_msg.audio.file_id,
-                        "song_title": song_title,
-                        "artist": artist,
-                        "album": variant.get("album"),
-                        "year": variant.get("year"),
-                        "duration": duration,
-                        "thumbnail": thumb_url,
-                        "saved_at": datetime.utcnow()
-                    })
-
+                    await db.save_dump_file_id_by_jio(music_id)
+                    
                     first_variant_done = True
                     break
 
                 if not first_variant_done:
                     retry_failed.append(track_id)
 
-                # Update DB every 2 retries or end of retry batch
                 if (sent_count + extra_sent_count + extra_skip_count) % 2 == 0 or idx == len(failed_tracks):
                     await db.tasks_collection.update_one(
                         {"_id": task_id},
