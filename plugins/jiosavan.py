@@ -136,6 +136,7 @@ def format_song(data, lyrics=False):
     data['album'] = clean_string(data.get('album', 'Unknown'))
     data["primary_artists"] = clean_string(data.get("primary_artists", "Unknown Artist"))
     data['image'] = data.get('image', '').replace("150x150", "500x500")
+    data['language'] = data.get('language', 'Unknown')
 
     if lyrics:
         if data.get('has_lyrics') == 'true':
