@@ -57,13 +57,22 @@ import asyncio
 import logging
 import re
 
-async def extract_track_info(track_id):
+async def extract_track_info(track_id: str):
+    """
+    Extract track title from Spotify oEmbed API.
+    Spaces and special chars will be URL-encoded (e.g., space -> %20).
+    """
     url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
+            if resp.status != 200:
+                return None
             data = await resp.json()
-            return data.get("title")
-  
+            title = data.get("title")
+            if title:
+                safe_title = urllib.parse.quote(title, safe="")
+                return safe_title
+            return None
 
   
 def format_seconds(seconds: int) -> str:
