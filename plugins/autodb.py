@@ -57,56 +57,13 @@ import asyncio
 import logging
 import re
 
-async def extract_track_info(track_id: str, retries: int = 3, delay: float = 2.0):
-    """
-    Fetch track info (title) from Spotify.
-    1. Try oEmbed JSON first.
-    2. If oEmbed fails or returns non-JSON (429), retry with delay.
-    3. Fallback: parse HTML <title> for track name.
-    """
-    oembed_url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
-    track_url = f"https://open.spotify.com/track/{track_id}"
-
-    for attempt in range(1, retries + 1):
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(oembed_url) as resp:
-                    if resp.status == 200 and "application/json" in resp.headers.get("Content-Type", ""):
-                        data = await resp.json()
-                        return {
-                            "title": data.get("title", "Unknown Title")
-                        }
-                    elif resp.status == 429:
-                        logging.warning(f"Rate limited on attempt {attempt}, retrying after {delay}s...")
-                        await asyncio.sleep(delay)
-                        continue
-                    else:
-                        # oEmbed failed, fallback
-                        text = await resp.text()
-                        logging.warning(f"oEmbed failed ({resp.status}), fallback to HTML. Response snippet: {text[:200]}")
-                        break  # break to fallback HTML
-        except Exception as e:
-            logging.warning(f"oEmbed attempt {attempt} error: {e}")
-            await asyncio.sleep(delay)
-
-    # Fallback: HTML <title> parse
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(track_url) as resp:
-                if resp.status != 200:
-                    logging.error(f"Track page fetch failed: {resp.status}")
-                    return None
-                html = await resp.text()
-                match = re.search(r"<title>(.*?) - .*? \| Spotify</title>", html)
-                if match:
-                    return {"title": match.group(1).strip()}
-                else:
-                    logging.warning(f"Could not parse title from HTML for track {track_id}")
-                    return {"title": "Unknown Title"}
-    except Exception as e:
-        logging.error(f"Fallback HTML parse error for {track_id}: {e}")
-        return {"title": "Unknown Title"}
-
+async def extract_track_info(track_id):
+    url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            data = await resp.json()
+            return data.get("title")
+  
 
   
 def format_seconds(seconds: int) -> str:
