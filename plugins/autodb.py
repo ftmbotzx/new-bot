@@ -51,12 +51,52 @@ async def show_run_flags(client, message):
     await message.reply_text(text)
     
 
-async def extract_track_info(track_id):
-    url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            data = await resp.json()
-            return data.get("title")
+# --- Spotify track info fetcher ---
+async def extract_track_info(track_id: str):
+    """
+    Fetch track title, author, thumbnail from Spotify oEmbed.
+    Fallback to HTML <title> parse if oEmbed fails.
+    """
+    oembed_url = f"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{track_id}"
+    track_url = f"https://open.spotify.com/track/{track_id}"
+
+    # Try oEmbed first
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(oembed_url) as resp:
+                if resp.status == 200:
+                    try:
+                        data = await resp.json()
+                        return {
+                            "title": data.get("title", "Unknown Title")
+                        }
+                    except Exception:
+                        text = await resp.text()
+                        logging.warning(f"oEmbed JSON invalid, fallback to HTML: {text[:200]}")
+                else:
+                    logging.warning(f"oEmbed request failed: {resp.status}")
+    except Exception as e:
+        logging.warning(f"oEmbed error: {e}")
+
+    # Fallback: parse HTML <title>
+    import re
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(track_url) as resp:
+                if resp.status != 200:
+                    logging.error(f"Track page fetch failed: {resp.status}")
+                    return None
+                html = await resp.text()
+                match = re.search(r"<title>(.*?) - .*? \| Spotify</title>", html)
+                if match:
+                    return {
+                        "title": match.group(1).strip()
+                    }
+    except Exception as e:
+        logging.error(f"Fallback HTML parse error for {track_id}: {e}")
+    
+    return None
+
   
   
 def format_seconds(seconds: int) -> str:
