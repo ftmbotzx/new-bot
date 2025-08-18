@@ -21,7 +21,7 @@ from plugins.jiosavan import search_for_song
 import re
 import aiohttp
 import asyncio
-from urllib.parse
+import urllib.parse
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
