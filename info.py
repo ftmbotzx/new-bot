@@ -1,5 +1,5 @@
 import os
-
+ 
 SESSION = "spotifydl"
 API_ID = int(os.getenv("API_ID", "8012239"))
 API_HASH = os.getenv("API_HASH", "171e6f1bf66ed8dcc5140fbe827b6b08")
