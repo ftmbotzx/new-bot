@@ -208,7 +208,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
 
                 dump_caption = (
                     f"🆔 Music ID: {music_id or 'N/A'}\n"
-                    f"💽 Album: {variant.get('album', 'Unknown')}\n"
+                    f"💽 Album: {variant.get('albumid', 'Unknown')}\n"
                     f"📅 Year: {variant.get('year', 'N/A')}\n"
                     f"🌐 Language: {variant.get('language', 'N/A')}\n"
                     f"⏱ Duration: {duration}\n"
@@ -336,7 +336,7 @@ async def run_batch_from_track_ids(client, track_ids: list, user_id: int, task_i
 
                     dump_caption = (
                         f"🆔 Music ID: {music_id or 'N/A'}\n"
-                        f"💽 Album: {variant.get('album', 'Unknown')}\n"
+                        f"💽 Album: {variant.get('albumid', 'Unknown')}\n"
                         f"📅 Year: {variant.get('year', 'N/A')}\n"
                         f"🌐 Language: {variant.get('language', 'N/A')}\n"
                         f"⏱ Duration: {duration}\n"
